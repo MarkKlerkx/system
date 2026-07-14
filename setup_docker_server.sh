@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # ==============================================================================
 # Ubuntu 26.04 Server (Minimal) - Docker Setup & Opslag Optimalisatie Script
-# Description: Installeert Docker, configureert /dev/sda (Kingston SSD) als 
+# Description: Installeert Docker, configureert /dev/sda als 
 #              exclusieve Docker data-root, en past OS-optimalisaties toe.
 # ==============================================================================
 
