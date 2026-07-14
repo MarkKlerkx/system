@@ -1,7 +1,7 @@
 # Personal tools and script
 This repo contains personal tools and scripts
 
-# Setuo Docker Server
+# Setup Docker Server
 Script to setup Docker on an Ubuntu 26.04 server  
 cd ~  
 mkdir scripts  
