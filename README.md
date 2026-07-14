@@ -2,7 +2,8 @@
 This repo contains personal tools and scripts
 
 # Setup Docker Server
-Script to setup Docker on an Ubuntu 26.04 server  
+Script to setup Docker on an Ubuntu 26.04 server. Run the commands below on your server:  
+
 cd ~  
 mkdir scripts  
 cd ~/scripts  
