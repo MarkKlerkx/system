@@ -46,7 +46,7 @@ lsblk -o NAME,FSTYPE,SIZE,LABEL,MOUNTPOINTS,MODEL
 SUGGESTED_DISK="/dev/sda"
 
 echo -e "\n--------------------------------------------------"
-echo "Suggestie: De schijf '$SUGGESTED_DISK' (Kingston SATA SSD 460GB)"
+echo "Suggestie: De schijf '$SUGGESTED_DISK'"
 echo "is geselecteerd om volledig geformatteerd te worden voor Docker."
 echo "--------------------------------------------------"
 
