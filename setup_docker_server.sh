@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# Ubuntu 26.04 Server - Docker Setup & Opslag Optimalisatie Script
+# Ubuntu 26.04 Server (Minimal) - Docker Setup & Opslag Optimalisatie Script
 # Description: Installeert Docker, configureert /dev/sda (Kingston SSD) als 
 #              exclusieve Docker data-root, en past OS-optimalisaties toe.
 # ==============================================================================
@@ -16,15 +16,22 @@ fi
 
 echo "====================================================================="
 echo " Starten van Ubuntu 26.04 Server Docker & Opslag Optimalisatie"
+echo " (Geoptimaliseerd voor Minimal Installations)"
 echo "====================================================================="
 
 # ------------------------------------------------------------------------------
-# Stap 1: Systeem vooraf updaten en overbodige restanten weggooien
+# Stap 1: Systeem vooraf updaten en ontbrekende basistools installeren
 # ------------------------------------------------------------------------------
-echo -e "\n[Stap 1/6] Systeem updaten en oude pakketten opschonen..."
+echo -e "\n[Stap 1/6] Systeem updaten en ontbrekende systeemtools installeren..."
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -y
 apt-get upgrade -y
+
+# Installeer tools die vaak ontbreken in de minimale installatie
+echo "Basistools installeren (parted, rsync, curl, gnupg, lsb-release)..."
+apt-get install -y parted rsync curl gnupg lsb-release ca-certificates
+
+# Restanten en overbodige pakketten direct opschonen
 apt-get autoremove -y --purge
 apt-get clean -y
 
@@ -69,14 +76,13 @@ mkfs.ext4 -F "$PARTITION"
 echo -e "\n[Stap 3/6] Map /docker aanmaken en persistent koppelen..."
 mkdir -p /docker
 
-# UUID ophalen voor stabiele fstab-koppeling (voorkomt problemen als schijfletters veranderen)
+# UUID ophalen voor stabiele fstab-koppeling
 UUID=$(blkid -o value -s UUID "$PARTITION")
 echo "UUID van de nieuwe partitie is: $UUID"
 
 # Schijf toevoegen aan /etc/fstab met performance-optimalisaties (noatime)
 if ! grep -q "$UUID" /etc/fstab; then
     echo "Toevoegen aan /etc/fstab..."
-    # 'noatime' voorkomt overbodige schrijfacties bij het lezen van bestanden op de SSD
     echo "UUID=$UUID /docker ext4 defaults,noatime,nodiratime,errors=remount-ro 0 2" >> /etc/fstab
 fi
 
@@ -87,13 +93,12 @@ mount -a
 # Stap 4: Docker installeren (Officiële Docker-CE Repository)
 # ------------------------------------------------------------------------------
 echo -e "\n[Stap 4/6] Docker Engine installeren..."
-apt-get install -y ca-certificates curl gnupg lsb-release
 
 # GPG-sleutel toevoegen
 mkdir -p /etc/apt/keyrings
 curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg --yes
 
-# Repository toevoegen (werkt feilloos op Ubuntu 26.04)
+# Repository toevoegen
 echo \
   "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu \
   $(lsb_release -cs) stable" | tee /etc/apt/sources.list.d/docker.list > /dev/null
@@ -135,10 +140,10 @@ echo -e "\n[Stap 6/6] Systeem optimalisaties toepassen..."
 
 # Sysctl optimalisaties voor zware netwerk/database I/O in containers
 cat <<EOF > /etc/sysctl.d/99-docker-performance.conf
-# Maximaal aantal open bestanden verhogen (cruciaal voor databases)
+# Maximaal aantal open bestanden verhogen
 fs.file-max = 2097152
 
-# Virtueel geheugenlimiet verhogen (nodig voor Elasticsearch, Redis etc.)
+# Virtueel geheugenlimiet verhogen (nodig voor Elasticsearch, databases etc.)
 vm.max_map_count = 262144
 
 # Netwerk socket queue vergroten voor betere load-afhandeling
