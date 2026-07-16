@@ -130,6 +130,9 @@ net.ipv4.tcp_max_syn_backlog = 2048
 vm.swappiness = 10
 EOF
 
+# Set locale
+locale-gen nl_NL.UTF-8
+
 # Direct toepassen van sysctl wijzigingen
 sysctl --system
 
