@@ -22,7 +22,7 @@ echo "====================================================================="
 # ------------------------------------------------------------------------------
 # Stap 1: Systeem vooraf updaten en ontbrekende basistools installeren
 # ------------------------------------------------------------------------------
-echo -e "\n[Stap 1/6] Systeem updaten en ontbrekende systeemtools installeren..."
+echo -e "\n[Stap 1/5] Systeem updaten en ontbrekende systeemtools installeren..."
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -y
 apt-get upgrade -y
@@ -38,7 +38,7 @@ apt-get clean -y
 # ------------------------------------------------------------------------------
 # Stap 2: Slimme schijfdetectie & formatteren van sda
 # ------------------------------------------------------------------------------
-echo -e "\n[Stap 2/6] Schijfdetectie en formattering..."
+echo -e "\n[Stap 2/5] Schijfdetectie en formattering..."
 echo "Huidige opslagapparaten op dit systeem:"
 lsblk -o NAME,FSTYPE,SIZE,LABEL,MOUNTPOINTS,MODEL
 
@@ -73,7 +73,7 @@ mkfs.ext4 -F "$PARTITION"
 # ------------------------------------------------------------------------------
 # Stap 3: Map /docker aanmaken en persistent mounten via fstab
 # ------------------------------------------------------------------------------
-echo -e "\n[Stap 3/6] Map /docker aanmaken en persistent koppelen..."
+echo -e "\n[Stap 3/5] Map /docker aanmaken en persistent koppelen..."
 mkdir -p /docker
 
 # UUID ophalen voor stabiele fstab-koppeling
@@ -92,7 +92,7 @@ mount -a
 # ------------------------------------------------------------------------------
 # Stap 4: Docker installeren (Officiële Docker-CE Repository)
 # ------------------------------------------------------------------------------
-echo -e "\n[Stap 4/6] Docker Engine installeren..."
+echo -e "\n[Stap 4/5] Docker Engine installeren..."
 
 # GPG-sleutel toevoegen
 mkdir -p /etc/apt/keyrings
@@ -110,33 +110,9 @@ apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin do
 systemctl stop docker
 
 # ------------------------------------------------------------------------------
-# Stap 5: Docker configureren met data-root op /docker & Log-rotatie
+# Stap 5: Systeem-breed performance optimalisaties doorvoeren (Sysctl & TRIM)
 # ------------------------------------------------------------------------------
-echo -e "\n[Stap 5/6] Docker data-root en log-limieten instellen..."
-mkdir -p /etc/docker
-
-# Instellen van data-root én log-rotatie om te voorkomen dat SSD's ongemerkt vollopen met containerlogs
-cat <<EOF > /etc/docker/daemon.json
-{
-  "data-root": "/docker",
-  "log-driver": "json-file",
-  "log-opts": {
-    "max-size": "10m",
-    "max-file": "3"
-  },
-  "storage-driver": "overlay2"
-}
-EOF
-
-# Start en activeer Docker opnieuw
-systemctl daemon-reload
-systemctl start docker
-systemctl enable docker
-
-# ------------------------------------------------------------------------------
-# Stap 6: Systeem-breed performance optimalisaties doorvoeren (Sysctl & TRIM)
-# ------------------------------------------------------------------------------
-echo -e "\n[Stap 6/6] Systeem optimalisaties toepassen..."
+echo -e "\n[Stap 5/5] Systeem optimalisaties toepassen..."
 
 # Sysctl optimalisaties voor zware netwerk/database I/O in containers
 cat <<EOF > /etc/sysctl.d/99-docker-performance.conf
