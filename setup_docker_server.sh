@@ -2,7 +2,8 @@
 # ==============================================================================
 # Ubuntu 26.04 Server (Minimal) - Docker Setup & Opslag Optimalisatie Script
 # Description: Installeert Docker, configureert /dev/sda als 
-#              exclusieve Docker data-root, en past OS-optimalisaties toe.
+#              exclusieve Docker data-root, past OS-optimalisaties toe,
+#              en configureert een SMB-share op /docker voor Windows-clients.
 # ==============================================================================
 
 # Sluit direct af bij fouten of ongedefinieerde variabelen
@@ -22,7 +23,7 @@ echo "====================================================================="
 # ------------------------------------------------------------------------------
 # Stap 1: Systeem vooraf updaten en ontbrekende basistools installeren
 # ------------------------------------------------------------------------------
-echo -e "\n[Stap 1/5] Systeem updaten en ontbrekende systeemtools installeren..."
+echo -e "\n[Stap 1/6] Systeem updaten en ontbrekende systeemtools installeren..."
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -y
 apt-get upgrade -y
@@ -38,7 +39,7 @@ apt-get clean -y
 # ------------------------------------------------------------------------------
 # Stap 2: Slimme schijfdetectie & formatteren van sda
 # ------------------------------------------------------------------------------
-echo -e "\n[Stap 2/5] Schijfdetectie en formattering..."
+echo -e "\n[Stap 2/6] Schijfdetectie en formattering..."
 echo "Huidige opslagapparaten op dit systeem:"
 lsblk -o NAME,FSTYPE,SIZE,LABEL,MOUNTPOINTS,MODEL
 
@@ -73,7 +74,7 @@ mkfs.ext4 -F "$PARTITION"
 # ------------------------------------------------------------------------------
 # Stap 3: Map /docker aanmaken en persistent mounten via fstab
 # ------------------------------------------------------------------------------
-echo -e "\n[Stap 3/5] Map /docker aanmaken en persistent koppelen..."
+echo -e "\n[Stap 3/6] Map /docker aanmaken en persistent koppelen..."
 mkdir -p /docker
 
 # UUID ophalen voor stabiele fstab-koppeling
@@ -92,7 +93,7 @@ mount -a
 # ------------------------------------------------------------------------------
 # Stap 4: Docker installeren (Officiële Docker-CE Repository)
 # ------------------------------------------------------------------------------
-echo -e "\n[Stap 4/5] Docker Engine installeren..."
+echo -e "\n[Stap 4/6] Docker Engine installeren..."
 
 # GPG-sleutel toevoegen
 mkdir -p /etc/apt/keyrings
@@ -112,7 +113,7 @@ systemctl stop docker
 # ------------------------------------------------------------------------------
 # Stap 5: Systeem-breed performance optimalisaties doorvoeren (Sysctl & TRIM)
 # ------------------------------------------------------------------------------
-echo -e "\n[Stap 5/5] Systeem optimalisaties toepassen..."
+echo -e "\n[Stap 5/6] Systeem optimalisaties toepassen..."
 
 # Sysctl optimalisaties voor zware netwerk/database I/O in containers
 cat <<EOF > /etc/sysctl.d/99-docker-performance.conf
@@ -140,6 +141,81 @@ sysctl --system
 echo "Activeren van wekelijkse TRIM (fstrim.timer)..."
 systemctl enable --now fstrim.timer
 
+# ------------------------------------------------------------------------------
+# Stap 6: Samba (SMB) installeren en /docker share configureren
+# ------------------------------------------------------------------------------
+echo -e "\n[Stap 6/6] Samba installeren en SMB-share voor /docker configureren..."
+
+# Samba installeren (zonder printerondersteuning, die is niet nodig)
+apt-get install -y samba
+
+# Zorg dat de gebruiker 'docker-admin' als systeemaccount bestaat.
+# Deze heeft geen login-shell nodig, alleen een Samba-wachtwoord.
+if ! id "docker-admin" &>/dev/null; then
+    echo "Gebruiker 'docker-admin' bestaat nog niet op dit systeem, wordt aangemaakt..."
+    useradd -M -s /usr/sbin/nologin docker-admin
+fi
+
+# Gedeelde groep aanmaken zodat root en docker-admin dezelfde bestandsrechten
+# op /docker krijgen (nodig omdat root normaal niet in ieders groepen zit).
+if ! getent group dockershare &>/dev/null; then
+    groupadd dockershare
+fi
+usermod -aG dockershare root
+usermod -aG dockershare docker-admin
+
+echo "Rechten op /docker instellen (groep 'dockershare', setgid voor nieuwe bestanden)..."
+chgrp -R dockershare /docker
+chmod -R 2775 /docker
+
+# Backup van de originele smb.conf voordat we wijzigen
+cp /etc/samba/smb.conf "/etc/samba/smb.conf.bak.$(date +%s)"
+
+# Printerondersteuning uitschakelen in de [global] sectie (niet nodig hier)
+if ! grep -q "disable spoolss" /etc/samba/smb.conf; then
+    sed -i '/^\[global\]/a \   load printers = no\n   printing = bsd\n   printcap name = /dev/null\n   disable spoolss = yes' /etc/samba/smb.conf
+fi
+
+# De [docker] share toevoegen, alleen toegankelijk voor root en docker-admin
+if ! grep -q "^\[docker\]" /etc/samba/smb.conf; then
+    cat <<EOF >> /etc/samba/smb.conf
+
+[docker]
+   path = /docker
+   comment = Docker data share
+   valid users = root, docker-admin
+   read only = no
+   browsable = yes
+   guest ok = no
+   create mask = 0664
+   directory mask = 2775
+   force group = dockershare
+EOF
+fi
+
+# Sambaconfiguratie valideren
+testparm -s
+
+# Samba-wachtwoorden instellen voor root en docker-admin
+# (dit zijn de credentials die je vanaf Windows 11 gebruikt, los van het Linux-wachtwoord)
+echo -e "\nStel het Samba-wachtwoord in voor gebruiker 'root':"
+smbpasswd -a root
+smbpasswd -e root
+
+echo -e "\nStel het Samba-wachtwoord in voor gebruiker 'docker-admin':"
+smbpasswd -a docker-admin
+smbpasswd -e docker-admin
+
+# Firewall openzetten voor Samba, indien ufw actief is
+if command -v ufw &>/dev/null && ufw status | grep -q "Status: active"; then
+    echo "UFW is actief, Samba-poorten worden toegestaan..."
+    ufw allow samba
+fi
+
+# Samba-services inschakelen en (her)starten
+systemctl enable --now smbd nmbd
+systemctl restart smbd nmbd
+
 echo -e "\n====================================================================="
 echo " Installatie en Optimalisatie Succesvol Voltooid!"
 echo "====================================================================="
@@ -148,5 +224,7 @@ echo " - Schijf $SUGGESTED_DISK is geformatteerd en gekoppeld op /docker."
 echo " - Alle Docker containers, images en volumes worden opgeslagen in /docker."
 echo " - Kernel-parameters zijn geoptimaliseerd voor database/netwerk-workloads."
 echo " - Log-rotatie is actief (max 3 logs van 10MB per container)."
+echo " - SMB-share \\\\$(hostname -I | awk '{print $1}')\\docker is beschikbaar"
+echo "   voor 'root' en 'docker-admin' vanaf Windows 11 (SMB2/3)."
 echo "====================================================================="
 docker info | grep -E "Docker Root Dir|Storage Driver"
